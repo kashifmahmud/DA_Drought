@@ -76,6 +76,35 @@ Asat <- subset(Asat, Temp == "Amb" & CO2 == 400) # only consider the ambient dro
 
 # boxplot(Photo~ Water, data=rdark)
 
+#---------------------------------------------------------------------------------------------
+# Plot Vcmax25 over time and treatment
+Asat.df = summaryBy(Photo ~ Date+Water, data=Asat, FUN=c(mean,standard.error))
+names(Asat.df) = c("Date", "Water", "Photo", "Photo_se")
+
+font.size = 12
+pd <- position_dodge(2)
+p0 = ggplot(Asat.df, aes(x=Date, y=Photo, group = Water, colour=Water)) + 
+  geom_point(position=pd) +
+  geom_errorbar(position=pd, aes(ymin=Photo-Photo_se, ymax=Photo+Photo_se), colour="grey", width=3) +
+  geom_line(position=pd, data = Asat.df, aes(x = Date, y = Photo, group = Water, colour=Water)) +
+  ylab(expression(A[sat] ~ (mu~mol ~ m^{-2} ~ s^{-1}))) +
+  # scale_x_date(date_labels="%b %y",date_breaks  ="1 month",limits = c(min(data.biomass$Date)-2, max(data.biomass$Date)+2)) +
+  labs(colour="Treatment") +
+  # scale_color_manual(labels = c("ambient", "elevated"), values = c("blue", "red")) +
+  theme_bw() +
+  theme(legend.title = element_text(colour="black", size=font.size)) +
+  theme(legend.text = element_text(colour="black", size = font.size)) +
+  theme(legend.position = c(0.75,0.8), legend.box = "horizontal") + theme(legend.key.height=unit(0.8,"line")) +
+  theme(legend.key = element_blank()) +
+  theme(text = element_text(size=font.size)) +
+  theme(axis.title.x = element_blank()) +
+  theme(axis.title.y = element_text(size = font.size, vjust=0.3)) +
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank()) 
+
+png(file = "output/1.Asat.png")
+print (p0)
+dev.off()
+
 #-------------------------------------------------------------------------------------
 # process met data
 tempdata = read.csv("raw_data/GHS30_Eglob-TxCxW_ClimateTemp_20110117-20110321_L1.csv")
@@ -113,7 +142,7 @@ metdata = merge(metdata,pardata, by=c("Date","time"))
 metdata$VPD <- RHtoVPD(metdata$RH, metdata$temp, Pa=101)
 
 #-------------------------------------------------------------------------------------
-# merge ps parameters to met data
+# merge ps data to met data
 Asat <- merge(metdata, Asat, by="Date")
 
 # Rdark Q10 equations by treatment
@@ -130,8 +159,8 @@ Asat$period <- ifelse(Asat$PAR > 2, "Day", "Night")
 Asat$Rd_pred <- ifelse(Asat$period=="Day", 0.7*Asat$Rd_pred, Asat$Rd_pred) # If it's day, subtract 30% from the leaf R fraction
 
 # Calculate Vcmax
-# Asat.day = subset(Asat, period == "Day")
-Asat.final = Vcmax1pt(Asat,Tcorr=T)
+Asat.day = subset(Asat, period == "Day") # consider only day values
+Asat.final = Vcmax1pt(Asat.day,Tcorr=T) # function to calculate Vcmax
 
 Vcmax25.df = summaryBy(Vcmax25 ~ Date+Water, data=Asat.final, FUN=c(mean,standard.error))
 names(Vcmax25.df) = c("Date", "Water", "Vcmax25", "Vcmax25_se")
