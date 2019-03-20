@@ -1,0 +1,309 @@
+---
+title: "Processing Duan's experiment data (Euc. Globulus) to infer drought effect on Carbon Balance"
+author: "Kashif Mahmud"
+date: "27 March 2019"
+output:
+  html_document: default
+  word_document: default
+editor_options: 
+  chunk_output_type: inline
+---
+
+<!-- #---------------------------------------------------------------------------------------------------------------- -->
+<!-- #---------------------------------------------------------------------------------------------------------------- -->
+### *R script to process the raw data to estimate the carbon pools and fluxes for Data Assimilation (DA)*  
+
+<!-- Load required libraries. There are quite a few, including some non-standard functions that are not on CRAN. This script will check for required libraries and install any that are missing.   -->
+```{r load_packages, echo=FALSE, results='hide', message=FALSE}
+source('R/load_packages_drought.R')
+```
+
+<!-- Load the custom analysis and plotting functions that do all of the actual work   -->
+```{r load_functions, echo=FALSE, results='hide', message=FALSE}
+source("R/functions_drought.R")
+source("R/functions_drought_CBM.R")
+```
+
+
+<!-- #---------------------------------------------------------------------------------------------------------------- -->
+<!-- #---------------------------------------------------------------------------------------------------------------- -->
+##### Briefly describe the Carbon Balance Model (CBM)    
+We planned to use a DA-modelling framework, similar to that used by Richardson et al. (2013) and Mahmud et al. (2018). This approach uses a simple carbon balance model shown in **Figure 1**. The model is driven by daily inputs of gross primary production (GPP). Total maintenance respiration (R~m,tot~) is immediately subtracted, and the remainder enters a non-structural C pool (C~n~). This pool is utilized for growth at a rate *k*. Of the utilization flux, a fraction *Y* is used in growth respiration (R~g~), and the remaining fraction (1-*Y*) is allocated to structural C pools (C~s~): among foliage, wood and root (C~s,f~, C~s,w~, C~s,r~). The foliage and root pools are assumed to turn over with rate *s~f~* and *s~r~* respectively. We assume there is no wood turnover as evidenced from the experiment.   
+
+**Figure 1**: Structure of the Carbon Balance Model (CBM). Pools, shown as solid boxes: C~n~, non-structural storage C; C~s,f~, structural C in foliage; C~s,r~, structural C in roots; C~s,w~, structural C in wood. Dummy pools, shown as dashed boxes: C~f,lit~, total C in foliage litterfall; C~r,lit~, total C in root turnover. Fluxes, denoted by arrows, include: GPP, gross primary production; R~m,tot~, maintenance respiration; Rg, growth respiration. Fluxes are governed by seven key parameters: *k*, storage utilization coefficient; *Y*, growth respiration fraction; *a~f~*, allocation to foliage; *a~w~*, allocation to wood; $a_r = (1-a_f-a_w)$, allocation to roots; *s~f~*, foliage turnover rate; *s~r~*, root turnover rate.    
+
+```{r plot.model.wtc3, eval=TRUE, echo=FALSE, results="asis", message=FALSE, warning = FALSE, fig.path = "Figures/", fig.width = 6, fig.height = 3}
+plot.model.wtc3()
+```
+
+The dynamics of the four carbon pools (C~n~, C~s,f~, C~s,w~, and C~s,r~) are described by four difference equations:   
+$$\Delta C_n = GPP - R_{m,tot} - kC_n$$
+$$\Delta C_{s,f} = kC_n(1-Y)a_f - s_fC_{s,f}$$
+$$\Delta C_{s,w} = kC_n(1-Y)a_w$$
+$$\Delta C_{s,r} = kC_n(1-Y)(1-a_f-a_w) - s_rC_{s,r}$$
+
+Where *k* is the storage utilization coefficient; *Y* is the growth respiration fraction; *a~f~*, *a~w~*, *a~r~* are the allocation to foliage, wood and root respectively; *s~f~* and *s~r~* are the leaf and root turnover rates respectively; $\sum s_fC_{s,f} = C_{f,lit}$ and $\sum s_rC_{s,r} = C_{r,lit}$ are the dummy foliage and root litter pools respectively.   
+
+Total maintenance respiration, R~m,tot~ was calculated as a temperature-dependent respiration rates for foliage, wood and root (R~m,f~, R~m,w~ and R~m,r~ respectively), multiplied by plant organ C masses (C~t,f~, C~t,w~, and C~t,r~ are the total C in foliage, wood and root respectively). Wood respiration was further partitioned into stem and branches. Similarly root respiration was partitioned into different root size classes (fine, intermediate, coarse and bole roots). Growth respiration (R~g~) at each time step was calculated as a modeled respiration rate (*Y*) multiplied by plant biomass changes at that time step ($\Delta C_{t,f} + \Delta C_{t,w} + \Delta C_{t,r}$).   
+
+$$R_{m,tot} = R_{m,f} C_{t,f} + R_{m,w} C_{t,w} + R_{m,r}C_{t,r}$$
+$$R_{m,w} C_{t,w} = R_{m,s} C_{t,s} + R_{m,b} C_{t,b}$$
+$$R_{m,r} C_{t,r} = R_{m,fr} C_{t,fr} + R_{m,ir} C_{t,ir} + R_{m,cr} C_{t,cr} + R_{m,br} C_{t,br}$$
+$$R_g = Y(\Delta C_{t,f} + \Delta C_{t,w} + \Delta C_{t,r})$$
+
+Where R~m,s~, R~m,b~, R~m,fr~, R~m,ir~, R~m,cr~ and R~m,br~ are the maintenance respiration rates with C~t,s~, C~t,b~, C~t,fr~, C~t,ir~, C~t,cr~ and C~t,br~ are the total C in stem, branches, fine roots, intermediate roots, coarse roots and bole roots respectively.    
+
+The non-structural (storage) C pool (C~n~) is assumed to be divided among foliage, wood and root tissues (C~n,f~, C~n,w~, C~n,r~) according to empirically-determined fractions.   
+  - *However, WTC-3 experiment only measured leaf non-structural C (C~n,f~), and therefore to estimate the partitioning of the non-structural C among different organs, we used data from WTC-4 experiment on similar-sized seedlings of a related species (Eucalyptus parramattensis). We will consider different treatments from the experimental dataset, to find the C~n~ partitioning to foliage, wood and roots.*   
+  - *NOT NEEDED: Another possibility (if WTC-4 data are not available!!) would be to assume another two parameters to estimate the C~n~ partitioning to foliage, wood and roots (p~f~, C~n~ partitioning to foliage; p~w~, C~n~ partitioning to wood; $p_r = (1-p_f-p_w)$, C~n~ partitioning to roots).*   
+  
+Total carbon in each tissue (C~t~) is then calculated as the sum of non-structural carbon (C~n~) and structural carbon (C~s~) for that tissue.    
+
+$$C_{t,f} = C_{n,f} + C_{s,f}$$
+$$C_{t,w} = C_{n,w} + C_{s,w}$$
+$$C_{t,r} = C_{n,r} + C_{s,r}$$
+We plan to estimate seven parameters (*k*, *Y*, *a~f~*, *a~w~*, *a~r~*, *s~f~*, *s~r~*) of the CBM for this experiment using DA. GPP and maintenance respiration rates will be used as model inputs in the DA framework, whereas the measurements of total aboveground respiration (R~above~), total C masses (C~t,f~, C~t,w~, C~t,r~), foliage litterfall (C~f,lit~) and foliage NSC (C~n,f~) will serve to constrain the parameters. Aboveground respiration (R~above~) was estimated by summing both maintenance and growth respiration components of foliage and wood.      
+$$R_{above} = R_{m,f} C_{t,f} + R_{m,w} C_{t,w} + Y\Delta C_{t,f} + Y\Delta C_{t,w}$$
+
+<!-- #---------------------------------------------------------------------------------------------------------------- -->
+<!-- #---------------------------------------------------------------------------------------------------------------- -->
+#### Step 1:  
+
+##### Inputs:   
+```{r inputs, eval=TRUE, echo=TRUE, results="asis", message=FALSE, warning = FALSE} 
+c1 = 0.48 # (unit conversion from gDM to gC: 1 gDM = 0.48 gC)   
+```
+
+##### Calculate Dark respiration
+
+##### Data used: 
+1. [GHS30_Eglob-TxCxW_GErdark_20110117-20110321_L1.CSV](https://hiev.uws.edu.au/data_files/99501)   
+
+**Figure 2**: Dark respiration of Eucalyptus Globulus trees exposed to drought    
+
+```{r Rdark, eval=TRUE, echo=FALSE, results="asis", message=FALSE, warning = FALSE, fig.path = "Figures/", fig.width = 9, fig.height = 3}
+source('R/Rdark.R')
+```
+
+#### Finding:  
+
+
+<!-- #---------------------------------------------------------------------------------------------------------------- -->
+<!-- #---------------------------------------------------------------------------------------------------------------- -->
+   
+#### Step 2:    
+##### Calculate Vcmax      
+1. Estimate one-point Vcmax from data on A, Ci & Tleaf     
+
+```{r Vcmax1pt, eval=TRUE, echo=FALSE, results="asis", message=FALSE, warning = FALSE, fig.path = "Figures/", fig.width = 9, fig.height = 14}
+source('R/Vcmax1pt.R')
+```
+
+<!-- #---------------------------------------------------------------------------------------------------------------- -->
+<!-- #---------------------------------------------------------------------------------------------------------------- -->
+   
+#### Step 3: calculate g1 from Licor data   
+
+```{r g1_calculation, eval=TRUE, echo=TRUE, results="asis", message=FALSE, warning = FALSE} 
+source('R/g1_calculation.R')
+```
+
+<!-- #---------------------------------------------------------------------------------------------------------------- -->
+<!-- #---------------------------------------------------------------------------------------------------------------- -->
+    
+#### Step 4: Jmax from Oula’s A-Ci curves (PCE paper, 2010)
+
+```{r Jmax_calculation, eval=TRUE, echo=FALSE, results="asis", message=FALSE, warning = FALSE}
+Vcmax.Jmax.ratio = 
+Asat$Jmax = Asat$Vcmax / Vcmax.Jmax.ratio
+```
+
+<!-- #---------------------------------------------------------------------------------------------------------------- -->
+<!-- #---------------------------------------------------------------------------------------------------------------- -->
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+#### Step 5: Run coupled photo-gs model, will retrun Aleaf at 15min interval
+
+```{r run_photosyn, eval=TRUE, echo=FALSE, results="asis", message=FALSE, warning = FALSE}
+source('R/run_photosyn.R')
+```
+
+
+#### Step 5: Process the leaf litter data   
+Litterfall was collected, dried, and weighed fortnightly for each tree. The dummy foliage litter pool, C~f,lit~ (g C) was estimated by cumulative summing of fortnightly litter starting from the flux measurements. The daily foliage litterfall was predicted as a linear function of time between two fortnightly consecutive measurements and will be used to constrain the parameter foliage turnover rate, *s~f~*.          
+
+##### Data used:   
+1. [WTC_TEMP_CM_LEAFLITTER_20130913-20140528_L1.csv](https://hiev.uws.edu.au/data_files/55646)   
+
+<!-- Process leaf litter data for each treatment  -->
+```{r leaf_litter_data, eval=TRUE, echo=FALSE, results="asis", message=FALSE, warning = FALSE}
+source('R/leaf_litter_data.R')
+```
+
+<!-- Merge leaf litter with all biomass data and plot the leaf litterfall  -->
+**Figure 5**: Dummy leaf litterfall pool of WTC-3 Eucalyptus tereticornis trees for all 4 treatments. Note that, the points are jittered to see the grey standard error bars (n=3).        
+
+```{r plot_leaf_litter_data, eval=TRUE, echo=FALSE, results="asis", message=FALSE, warning = FALSE, fig.path = "Figures/", fig.width = 9, fig.height = 3}
+source('R/plot_leaf_litter_data.R')
+```
+
+
+
+<!-- #---------------------------------------------------------------------------------------------------------------- -->
+<!-- #---------------------------------------------------------------------------------------------------------------- -->
+#### Step 6: Estimate the leaf TNC (storage) pool   
+1. First we considered the foliage TNC measurements over time and averaged the data across the treatments (n=3) to get the mean storage with standard errors.    
+2. We then merged the diurnal foliage TNC data by averaging all 2-hourly interval data on a sunny (20 February) and an overcast/rainy day (26 March). Similarly this data were averaged across the treatments (n=3) to get the mean with standard errors.       
+3. We also took onto board the diurnal leaf TNC data when trees were girdled on 15 May 2014 (only the ambient watered treatments).     
+4. The unit was converted to gC in TNC per gC of plant for consistency.    
+
+##### Data used:   
+1. [WTC_TEMP_CM_LEAFCARB_20130515-20140402_L2.csv](https://hiev.uws.edu.au/data_files/95740)   
+2. [WTC_TEMP_CM_LEAFCARB-DIURNAL_20140220-20140326_R.csv](https://hiev.uws.edu.au/data_files/95732)      
+3. [WTC_TEMP_CM_PETIOLEGIRDLE-LEAFMASS-AREA-CARB_20140507-20140512_L2.csv](https://hiev.uws.edu.au/data_files/96526)   
+
+<!-- Process leaf TNC data for each treatment  -->
+```{r leaf_tnc_data, eval=TRUE, echo=FALSE, results="asis", message=FALSE, warning = FALSE}
+source('R/leaf_tnc_data.R')
+```
+
+<!-- Merge leaf TNC with all biomass data and plot the leaf tnc storage data  -->
+**Figure 6**: Foliage TNC pool, *C~n,f~* over time of WTC-3 Eucalyptus tereticornis trees for all 4 treatments. Note that, the points are jittered to see the grey standard error bars (n=3).        
+
+```{r plot_leaf_tnc_data, eval=TRUE, echo=FALSE, results="asis", message=FALSE, warning = FALSE, fig.path = "Figures/", fig.width = 9, fig.height = 3}
+source('R/plot_leaf_tnc_data.R')
+```
+
+<!-- write the file of Daily GPP, Ra, LA and all mass pools (rootmass, woodmass, foliagemass, litterfall, tnc) data  -->
+```{r save_data, eval=TRUE, echo=FALSE, results="asis", message=FALSE, warning = FALSE}
+write.csv(data.GPP.Ra.LA.mass, file = "processed_data/GPP_Ra_LA_mass.csv", row.names = FALSE)
+```
+
+
+<!-- #---------------------------------------------------------------------------------------------------------------- -->
+<!-- #---------------------------------------------------------------------------------------------------------------- -->
+#### Step 7: Estimate the partitioning of woodmass to branch/stem and rootmass to fine/intermediate/coarse/bole roots  
+##### *Purpose: To predict total wood and root maintenance respiration $R_{m,w}C_{t,w}$ and $R_{m,r}C_{t,r}$, we need both daily respiration rate and corresponding daily C mass of all wood and root components.*    
+##### Woodmass partitioning    
+1. Calculate partitioning of WTC-3 woodmass: We did not find any significant difference across the treatments for wood partitioning, so we considered equivalent wood partitioning for all treatments (Figure 7, solid lines).      
+2. We then considered a linear variation over time in between the fortnightly measurements to predict the daily woodmass partitioning.     
+
+##### Rootmass partitioning     
+1. Calculate partitioning of WTC-3 harvest rootmass: We did not find any significant difference across the treatments for root partitioning, so we considered equivalent root partitioning for all treatments (Figure 7, dotted lines end points).      
+2. Estimate the partitioning of initial rootmass based on Court's Pot experiment harvest rootmass (control free seedling): We assume there were only fine and intermediate roots, with no coarse and bole roots at the start of flux measurements (Figure 7, starting points).   
+3. We then considered a linear variation over time to predict the daily rootmass partitioning, in agreement with above ground biomass partitioning that follows linear trend.     
+
+##### Data used:   
+1. [WTC_TEMP_CM_LEAFCARB_20130515-20140402_L2.csv](https://hiev.uws.edu.au/data_files/95740)   
+2. [Below-ground Sink limited container experiment (Court's exp) - Harvest rootmass data of free seedlings](https://hiev.uws.edu.au/data_files/174409)     
+
+<!-- Calculate partitioning of WTC-3 initial and harvest rootmass, and then plot the linear time series -->  
+**Figure 7**: Rootmass partitioning of WTC-3 Eucalyptus tereticornis trees for all 4 treatments. The grey shade shows the standard error (n=12).        
+
+```{r woodmass_rootmass_partitioning, eval=TRUE, echo=FALSE, results="asis", message=FALSE, warning = FALSE, fig.path = "Figures/", fig.width = 9, fig.height = 3}
+source('R/woodmass_rootmass_partitioning.R')
+```
+
+
+<!-- #---------------------------------------------------------------------------------------------------------------- -->
+<!-- #---------------------------------------------------------------------------------------------------------------- -->
+#### Step 8: Plot leaf-scale respiration vs. leaf temperature to find Q~10~ for WTC-3    
+1. We plotted the leaf-scale respiration (R~leaf~) against leaf temperature (T~leaf~) to test the short-term temperature sensitivity of the respiration of individual leaves similar to Drake et al. (2016). However, instead of using Arrhenius function (Drake et al. 2016), we fitted the exponential relationship: $R_{leaf} = R_{leaf,25}Q_{10}^{(T_{leaf}-25)/10}$. The statistical test did not show any significant differences for drought treatment, however warming reduced the pre-exponential coefficient (*R~leaf,25~*) but did not alter *Q~10~*, reflecting a *Q~10~* value of **2.26** at 25°C for all treatments that agrees with previous study of Drake et al. (2016).        
+
+##### Data used:    
+1. [WTC_TEMP_CM_GX-RdarkVsT_20140207-20140423_L1.csv](https://hiev.uws.edu.au/data_files/53862)   
+
+**Figure 8**: The short-term temperature sensitivity of the respiration of individual leaves relative to leaf temperature. Error bars reflect the standard errors of Eucalyptus tereticornis trees exposed to each temperature treatments (n = 6).    
+
+```{r q10_calculate, eval=TRUE, echo=FALSE, results="asis", message=FALSE, warning = FALSE, fig.path = "Figures/", fig.width = 6, fig.height = 4}
+source('R/q10_calculate.R')
+```
+
+
+<!-- #---------------------------------------------------------------------------------------------------------------- -->
+<!-- #---------------------------------------------------------------------------------------------------------------- -->
+#### Step 9: Relationship between mass-based leaf-scale respiration at 25°C and air temperature        
+1. We plotted the mass-based leaf-scale respiration at 25°C, R~leaf,25~ (nmol CO~2~ g^-1^ s^-1^) over time following Aspinwall et al. (2016). **Figure 9** (first panel) shows that leaf R (mass-basis) measured at 25°C varied over time and decreased as mean air temperature (T~air~) increased (rest of the panels).    
+2. Using the site weather data, we fitted a linear regression between R~leaf25~ and T~air~. We tried different options with mean air temperature of previous 7-days, previous 3-days, previous day, 3-day including the day of respiration measurement and only the day of respiration measurement. Treatment had no effect on the intercept or slope of the relationship between R~leaf25~ and T~air~. Based on the data fit and considering the finding of previous study (Aspinwall et al. 2016), we found the best relationship of 25°C mass-based leaf-scale respiration (nmol CO~2~ g^-1^ s^-1^) with 3-day mean air temperature, T~air,3day~ (°C) with P < 0.001, r^2^ = 0.75:   
+$$R_{leaf,25} = 21.5 - 0.565 T_{air,3day}$$
+
+##### Data used:    
+1. [WTC_TEMP_CM_GX-Rdark25_20130617-20140402_L2.csv](https://hiev.uws.edu.au/data_files/55626)    
+2. [WTC_TEMP_CM_WTCMET_20130601-20130630_L1_v1.csv](https://hiev.uws.edu.au/data_files/52258) - [WTC_TEMP_CM_WTCMET_20140501-20140531_L1_v1.csv](https://hiev.uws.edu.au/data_files/52269)     
+
+**Figure 9**: Mass-based night-time leaf-scale dark respiration measured in Eucalyptus tereticornis at a set temperature of 25°C through time (first panel) and in relation to prevailing mean air temperature, T~air~ (rest of the panels). Mean values are those of replicate whole-tree chambers (n = 6 for ambient/warmed treatment), determined based on three individual leaf measures per chamber. No statistically significant variation for drought/watered treatment on leaf respiration.           
+
+```{r leafscaleR_vs_Tair_regression, eval=TRUE, echo=FALSE, results="asis", message=FALSE, warning = FALSE, fig.path = "Figures/", fig.width = 9, fig.height = 7}
+source('R/leafscaleR_vs_Tair_regression.R')
+```
+
+
+<!-- #---------------------------------------------------------------------------------------------------------------- -->
+<!-- #---------------------------------------------------------------------------------------------------------------- -->
+#### Step 10: Estimate daily mean respiration rates for foliage, wood and roots          
+1. Foliage respiration: First we calculated the daily mean mass-based leaf-scale respiration, R~leaf,25~ (nmol CO~2~ g^-1^ s^-1^) at 25°C using the regression we fitted with 3-day mean air temperature, T~air,3day~ (°C) in Step 9: $R_{leaf,25} = 21.5 - 0.565 T_{air,3day}$.      
+2. Bole wood respiration: There was no statistically significant difference in bole/stem wood respiration across the treatments, and the rate was 0.656 nmol CO~2~ g^-1^ s^-1^ at 15°C.                   
+3. Branch wood respiration: We found statistically significant difference in branch wood respiration across the temperature treatments (ambient vs. warmed). The rates of branch wood respiration in WTC-3 were about 1.33 nmol CO~2~ g^-1^ s^-1^ in the ambient treatment and about 1.04 nmol CO~2~ g^-1^ s^-1^ in the warmed (+3°C) treatment when measured at 15°C. This indicates temperature acclimation in branch wood respiration.     
+4. Fine root respiration: We assumed the specific rate of fine root respiration at 25°C was about 10 nmol CO~2~ g^-1^ s^-1^ (Drake et al. 2017). We estimated fine root respiration at 15°C using the Q~10~ value of 2.26 (as found in Step 8).                    
+5. Coarse root respiration: For coarse roots (Diameter > 10 mm), we suggested using the rate we determined for branch wood in E. tereticornis. The rationale would be that the woody coarse roots were made up of more or less well developed xylem (and phloem) tissues, were thus more or less functioning as underground woody branches. Therefore, we would expect similar temperature acclimation in coarse root as in branch wood respiration.     
+6. Bole root respiration: The bole and big tap roots were assigned the bole wood respiration, collected at the end of the WTC-3 study at 15°C.      
+7. Intermediate root respiration: For the intermediate size class of 2 to 10 mm, We interpolated respiration rates between the size classes to estimate the middle class using a simple log-log plot.     
+
+8. **15-mins interval respiration rates**:     
+  - *We estimated 15-mins interval foliage respiration rates, R~leaf~ at 15-mins air temperatures (T~air~) using the site weather data, mass-based daily mean leaf-scale respiration at 25°C, R~leaf,25~ and Q~10~ of 2.26: $R_{leaf} = R_{leaf,25}Q_{10}^{(T_{leaf}-25)/10}$. We assume $T_{leaf} = T_{air}$. We then consider a 30% reduction in foliage respiration during day time.*    
+  - *Wood respiration rates in 15-mins interval were calculated at air temperature (T~air~) using the site weather data, mass-based wood respiration rates at 15°C and Q~10~ of 2.26.*    
+  - *Similarly root respiration rates in 15-mins interval were calculated using soil temperature at 10 cm depth, mass-based root respiration rates at 15°C and Q~10~ of 2.26.*    
+9. **Daily mean respiration rates**: *Daily mean respiration rates for all tree components were calculated by summing all 15-mins data for each day.*    
+10. *The units were converted to gC g^-1^C d^-1^ (from nmol CO~2~ g^-1^ s^-1^) for consistency.*    
+
+##### Data used:    
+1. [WTC_TEMP_CM_GX-RBRANCH_20140513-20140522_L1_v1.csv](https://hiev.uws.edu.au/data_files/55727)     
+2. [WTC_TEMP_CM_WTCFLUX-STEM_20140528_L1_v1.csv](https://hiev.uws.edu.au/data_files/179783)     
+3. [WTC_TEMP_CM_WTCMET_20130601-20130630_L1_v1.csv](https://hiev.uws.edu.au/data_files/52258) - [WTC_TEMP_CM_WTCMET_20140501-20140531_L1_v1.csv](https://hiev.uws.edu.au/data_files/52269)
+
+<!-- Calculate partitioning of WTC-3 initial and harvest rootmass, and then plot the linear time series -->  
+**Figure 10**: Daily mean respiration rates for all tree components (foliage, wood and roots). There were no statistically significant difference in respiration rates across drought/watered treatments. Both branch wood and coarse root respiration showed temperature acclimation having higher rates in ambient than warmed condition.               
+
+```{r daily_R_rates, eval=TRUE, echo=FALSE, results="asis", message=FALSE, warning = FALSE, fig.path = "Figures/", fig.width = 9, fig.height = 14}
+source('R/daily_R_rates.R')
+```
+
+<!-- write csv file of all daily data (with woodmass and rootmass partitioning, respiration rates for roots, wood and foliage -->
+```{r save_all_data, eval=TRUE, echo=FALSE, results="asis", message=FALSE, warning = FALSE}
+write.csv(data.all, "processed_data/data_all.csv", row.names=FALSE) # unit of respiration rates: gC per gC plant per day
+```
+
+<!-- #---------------------------------------------------------------------------------------------------------------- -->
+<!-- #---------------------------------------------------------------------------------------------------------------- -->
+#### Step 11: Apply Data Assimilation (DA) with the estimates of WTC-3 carbon pools and fluxes to predict all seven parameters (*k*, *Y*, *a~f~*, *a~w~*, *a~r~*, *s~f~*, *s~r~*), with the aim to quantify the main C balance processes (respiration, carbohydrate utilisation, allocation and turnover) in response to elevated temperature and drought on Eucalyptus tereticornis trees grown in WTCs.     
+
+Hypothesis 1: NSC vs. Temperature
+  - As *Paul, Driscoll & Lawlor (1991)* have shown, low T generally results in accumulation of carbohydrates, indicating that growth or storage are limiting. Conversely, at high temperatures, sink demand is large and assimilate is depleted so there should be a marked higher utilization rate (*k*).    
+  - The carbohydrate concentration decreased in stem and root tissues for Citrus plants, while it increased in leaf tissues under moderate warm conditions (30/20ºC than at 25/20ºC, *Ribeiro et al. 2012*).     
+Hypothesis 2: NSC vs. Drought
+- We hypothesize that drought is carbon limiting and negatively impacts plant carbon balance and that plants will rely on stored carbon to survive carbon limitation and therefore deplete their stored carbon reserves over time.     
+
+
+
+##### *... in progress ...*       
+
+
+<!-- #---------------------------------------------------------------------------------------------------------------- -->
+<!-- #---------------------------------------------------------------------------------------------------------------- -->
+
+
+
+
+
