@@ -4,9 +4,11 @@ rdark <- read.csv("raw_data/GHS30_Eglob-TxCxW_GErdark_20110117-20110321_L1.csv")
 rdark$Date <- as.Date(rdark$Date,format="%d/%m/%Y")
 
 # Clean the Licor data
-rdark = subset(rdark, PARi >= 0 & Ci >= 0 & Cond >= 0)
+rdark = subset(rdark, Ci >= 0)
+# rdark = subset(rdark, PARi >= 0 & Ci >= 0 & Cond >= 0)
 rdark <- (subset(rdark, select = c("Date", "Potnum", "Temp", "CO2", "Water", "Photo", "Cond", 
                                                       "Ci", "Tleaf", "Area", "Trmmol")))
+rdark = subset(rdark, Date <= as.Date("2011-02-25"))
 rdark <- subset(rdark, Temp == "Amb" & CO2 == 400) # only consider the ambient drought treatment
 # rdark <- subset(rdark, CO2 == 400) # only consider the ambient drought treatment
 # boxplot(Photo~ Water, data=rdark)
@@ -21,14 +23,18 @@ q25_drake <- 1.86
 q10_crous <- 1.95
 
 # water treatment means
-rdark_agg = summaryBy(Photo+Cond+Ci+Trmmol+Tleaf ~ Date+Water, data=rdark, FUN=mean)
-names(rdark_agg) = c("Date", "Water", "Photo", "Cond", "Ci", "Trmmol", "Tleaf")
+rdark_agg = summaryBy(Photo+Cond+Ci+Trmmol+Tleaf ~ Date+Water+Potnum, data=rdark, FUN=mean)
+names(rdark_agg) = c("Date", "Water", "Potnum", "Photo", "Cond", "Ci", "Trmmol", "Tleaf")
 rdark_agg$Photo <- -1*rdark_agg$Photo
 
-rdark_eq <- cbind(subset(rdark_agg, select = c("Date", "Water", "Photo", "Tleaf")), q25_drake)
+rdark_df = summaryBy(Photo+Tleaf ~ Date+Water, data=rdark_agg, FUN=c(mean,standard.error))
+names(rdark_df) = c("Date", "Water", "Photo", "Tleaf", "Photo_se", "Tleaf_se")
+
+rdark_eq <- cbind(subset(rdark_df, select = c("Date", "Water", "Photo", "Tleaf", "Photo_se", "Tleaf_se")), q25_drake)
 rdark_eq <- cbind(rdark_eq, q10_crous)
 mean(rdark_eq$Tleaf)
 names(rdark_eq)[3] <- "rd18.5"
+names(rdark_eq)[5] <- "rd18.5_se"
 
 # q10 equation 
 rdark_eq$rd25_euct <- with(rdark_eq, rd18.5*(q25_drake^((abs(Tleaf-25))/10)))
@@ -45,15 +51,15 @@ anova(rdark_Anova)
 #---------------------------------------------------------------------------------------------
 # Plot Rd over time and treatment
 font.size = 12
-pd <- position_dodge(2)
+pd <- position_dodge(0.75)
 p1 = ggplot(rdark_eq, aes(x=Date, y=rd18.5, group = Water, colour=Water)) + 
   geom_point(position=pd) +
-  # geom_errorbar(position=pd, aes(ymin=g1-g1_se, ymax=g1+g1_se), colour="grey", width=3) +
+  geom_errorbar(position=pd, aes(ymin=rd18.5-rd18.5_se, ymax=rd18.5+rd18.5_se), colour="grey", width=3) +
   geom_line(position=pd, data = rdark_eq, aes(x = Date, y = rd18.5, group = Water, colour=Water)) +
   ylab(expression(R["d,18.5"] ~ (mu ~ mol ~ m^{-2} ~ s^{-1}))) +
   # scale_x_date(date_labels="%b %y",date_breaks  ="1 month",limits = c(min(data.biomass$Date)-2, max(data.biomass$Date)+2)) +
   labs(colour="Treatment") +
-  # scale_color_manual(labels = c("ambient", "elevated"), values = c("blue", "red")) +
+  scale_color_manual(labels = c("Rewatered drought","Sustained drought","Well watered"), values = c("orange","red","green")) +
   theme_bw() +
   theme(legend.title = element_text(colour="black", size=font.size)) +
   theme(legend.text = element_text(colour="black", size = font.size)) +

@@ -3,10 +3,9 @@
 # # convert RH to VPD
 # Asat$VPD <- RHtoVPD(Asat$RH, Asat$temp, Pa=101)
 
-
 # run coupled photo-gs model, assume Rd = 0
 A_pred <- Photosyn(VPD=Asat$VPD, Ca=400, PPFD=Asat$PPFD, Tleaf=Asat$temp, 
-                   Jmax=Asat$Jmax.mean, Vcmax=Asat$Vcmax.mean, Rd=0, g1=Asat$g1)
+                   Jmax=Asat$Jmax.mean, Vcmax=Asat$Vcmax.mean, Rd=0, g1=Asat$g1, EaV = 67338, delsC = 631.7)
 
 
 # need a new dfr with Aleaf and Anet across the day

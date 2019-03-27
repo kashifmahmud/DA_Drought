@@ -8,6 +8,7 @@ Asat <- read.csv("raw_data/GHS30_Eglob-TxCxW_GEasat_20110117-20110321_L1.csv")
 Asat = subset(Asat, Cond >= 0 & Photo >=0) # Filter Licor data having conductance >= 0 and Photo >= 0
 
 Asat$Date <- as.Date(Asat$Date, format="%Y/%m/%d")
+Asat = subset(Asat, Date <= as.Date("2011-02-25") & Date != as.Date("2011-02-08"))
 # resp_dark$ID <- paste(resp_dark$plot, resp_dark$pot, sep = "-")
 
 # leafmass <- read.csv("raw data/seedling leaf mass area.csv")
@@ -26,9 +27,11 @@ Asat <- subset(Asat, Temp == "Amb" & CO2 == 400) # only consider the ambient dro
 Asat$g1 = (((Asat$Cond * Asat$CO2S) / (1.6 * Asat$Photo)) - 1) * (Asat$VpdL)^0.5
 # g1.summary = summaryBy(g1 ~ Date+Water, data=Asat.final, FUN=c(mean,standard.error))
 # boxplot(g1.mean~ Water, data=g1.summary)
-g1.df = summaryBy(g1 ~ Date+Water, data=Asat, FUN=c(mean,standard.error))
-names(g1.df) = c("Date", "Water", "g1", "g1_se")
+g1_agg = summaryBy(g1 ~ Date+Water+Potnum, data=Asat, FUN=mean)
+names(g1_agg) = c("Date", "Water", "Potnum", "g1")
 # g1.df = subset(g1.df, Water %in% as.factor(c("Rewatered  drought", "Sustained drought",  "Well watered")))
+g1.df = summaryBy(g1 ~ Date+Water, data=g1_agg, FUN=c(mean,standard.error))
+names(g1.df) = c("Date", "Water", "g1", "g1_se")
 
 # Test whether there are treatment and temporal effect on g1
 g1.anova <- lm(g1 ~ Water+Date, data = g1.df)
@@ -40,7 +43,7 @@ anova(g1.anova)
 #---------------------------------------------------------------------------------------------
 # Plot g1 over time and treatment
 font.size = 12
-pd <- position_dodge(2)
+pd <- position_dodge(0.75)
 p3 = ggplot(g1.df, aes(x=Date, y=g1, group = Water, colour=Water)) + 
   geom_point(position=pd) +
   geom_errorbar(position=pd, aes(ymin=g1-g1_se, ymax=g1+g1_se), colour="grey", width=3) +
@@ -48,11 +51,11 @@ p3 = ggplot(g1.df, aes(x=Date, y=g1, group = Water, colour=Water)) +
   ylab(expression(g1 ~ (mmol ~ m^{-2} ~ s^{-1}))) +
   # scale_x_date(date_labels="%b %y",date_breaks  ="1 month",limits = c(min(data.biomass$Date)-2, max(data.biomass$Date)+2)) +
   labs(colour="Treatment") +
-  # scale_color_manual(labels = c("ambient", "elevated"), values = c("blue", "red")) +
+  scale_color_manual(labels = c("Rewatered drought","Sustained drought","Well watered"), values = c("orange","red","green")) +
   theme_bw() +
   theme(legend.title = element_text(colour="black", size=font.size)) +
   theme(legend.text = element_text(colour="black", size = font.size)) +
-  theme(legend.position = c(0.8,0.6), legend.box = "horizontal") + theme(legend.key.height=unit(0.8,"line")) +
+  theme(legend.position = c(0.3,0.6), legend.box = "horizontal") + theme(legend.key.height=unit(0.8,"line")) +
   theme(legend.key = element_blank()) +
   theme(text = element_text(size=font.size)) +
   theme(axis.title.x = element_blank()) +
@@ -68,8 +71,10 @@ dev.off()
 # Read in SWC measurements
 swc <- read.csv("raw_data/GHS30_Eglob-TxCxW_SWC,SWP_20110117-20110321_L1.csv")
 swc$Date <- as.Date(swc$Date,format="%d/%m/%Y")
+# swc = subset(swc, Date <= as.Date("2011-02-25") & Date != as.Date("2011-02-08"))
+
 swc <- subset(swc, Temp == "Amb" & CO2 == 400) # only consider the ambient drought treatment
-swc = subset(swc, Date >= as.Date("2011-01-17") & Date <= as.Date("2011-03-21"))
+swc = subset(swc, Date >= as.Date("2011-01-17") & Date <= as.Date("2011-02-25"))
 swc$Time <- format(as.POSIXct(swc$Time,format="%H:%M:%S"),"%H:%M:%S")
 swc = summaryBy(VWC ~ Date+Water, data=swc, FUN=c(mean,standard.error))
 names(swc) = c("Date", "Water", "VWC", "VWC_se")
@@ -84,9 +89,9 @@ font.size = 12
 pd <- position_dodge(0)
 p4 = ggplot(g1.swc, aes(x=VWC, y=g1, group = Water, colour=Water)) + 
   geom_point(position=pd) +
-  # geom_errorbar(position=pd, aes(ymin=g1-g1_se, ymax=g1+g1_se), colour="grey", width=3) +
+  geom_errorbar(position=pd, aes(ymin=g1-g1_se, ymax=g1+g1_se), colour="grey", width=min(Vcmax25.swc$VWC)/5) +
   geom_line(position=pd, data = g1.swc, aes(x = VWC, y = g1, group = Water, colour=Water)) +
-  ylab(expression(g1 ~ (mmol ~ m^{-2} ~ s^{-1}))) +
+  ylab(expression(g[1] ~ (kPa ^{0.5}))) +
   xlab("VWC (%)") +
   # scale_x_date(date_labels="%b %y",date_breaks  ="1 month",limits = c(min(data.biomass$Date)-2, max(data.biomass$Date)+2)) +
   labs(colour="Treatment") +
@@ -101,7 +106,7 @@ p4 = ggplot(g1.swc, aes(x=VWC, y=g1, group = Water, colour=Water)) +
   theme(axis.title.y = element_text(size = font.size, vjust=0.3)) +
   theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank()) 
 
-png(file = "output/4.g1_vs_VWC.png")
+png(file = "output/3.g1_vs_VWC.png")
 print (p4)
 dev.off()
 

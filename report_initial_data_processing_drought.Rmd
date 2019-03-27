@@ -114,25 +114,13 @@ source('R/g1_calculation.R')
 #### Step 4: Jmax from Oula’s A-Ci curves (PCE paper, 2010)
 
 ```{r Jmax_calculation, eval=TRUE, echo=FALSE, results="asis", message=FALSE, warning = FALSE}
-Vcmax.Jmax.ratio = 
-Asat$Jmax = Asat$Vcmax / Vcmax.Jmax.ratio
+Jmax.Vcmax.ratio = 1.7 # Data provided by Dushan and referenced to Crous et al (2013) GCB (WTC2 experiment)
+Vcmax25.df$Jmax = Vcmax25.df$Vcmax25 * Jmax.Vcmax.ratio
+Vcmax25.df$Jmax_se = Vcmax25.df$Vcmax25_se * Jmax.Vcmax.ratio
 ```
 
 <!-- #---------------------------------------------------------------------------------------------------------------- -->
 <!-- #---------------------------------------------------------------------------------------------------------------- -->
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 #### Step 5: Run coupled photo-gs model, will retrun Aleaf at 15min interval
 
@@ -140,29 +128,58 @@ Asat$Jmax = Asat$Vcmax / Vcmax.Jmax.ratio
 source('R/run_photosyn.R')
 ```
 
+<!-- #---------------------------------------------------------------------------------------------------------------- -->
+<!-- #---------------------------------------------------------------------------------------------------------------- -->
 
-#### Step 5: Process the leaf litter data   
-Litterfall was collected, dried, and weighed fortnightly for each tree. The dummy foliage litter pool, C~f,lit~ (g C) was estimated by cumulative summing of fortnightly litter starting from the flux measurements. The daily foliage litterfall was predicted as a linear function of time between two fortnightly consecutive measurements and will be used to constrain the parameter foliage turnover rate, *s~f~*.          
+#### Step 6: Process the allometry data   
 
 ##### Data used:   
-1. [WTC_TEMP_CM_LEAFLITTER_20130913-20140528_L1.csv](https://hiev.uws.edu.au/data_files/55646)   
+1. [GHS30_Eglob-TxCxW_growth_20110107-20110321_L1.csv](https://hiev.uws.edu.au/data_files/99502)   
 
-<!-- Process leaf litter data for each treatment  -->
-```{r leaf_litter_data, eval=TRUE, echo=FALSE, results="asis", message=FALSE, warning = FALSE}
-source('R/leaf_litter_data.R')
+<!-- Plot the allometry data  -->
+**Figure 1**: Fortnightly Height and Diameter of Eucalyptus Globulus trees for all treatments. Note that, the points are jittered in all figures to see the grey standard error bars (n = 6~2).       
+
+<!-- Process allometry data for 3 treatments  -->
+```{r allometry, eval=TRUE, echo=FALSE, results="asis", message=FALSE, warning = FALSE}
+source('R/allometry.R')
 ```
 
-<!-- Merge leaf litter with all biomass data and plot the leaf litterfall  -->
-**Figure 5**: Dummy leaf litterfall pool of WTC-3 Eucalyptus tereticornis trees for all 4 treatments. Note that, the points are jittered to see the grey standard error bars (n=3).        
+<!-- #---------------------------------------------------------------------------------------------------------------- -->
+<!-- #---------------------------------------------------------------------------------------------------------------- -->
 
-```{r plot_leaf_litter_data, eval=TRUE, echo=FALSE, results="asis", message=FALSE, warning = FALSE, fig.path = "Figures/", fig.width = 9, fig.height = 3}
-source('R/plot_leaf_litter_data.R')
+#### Step 6: Calculate the biomass   
+
+##### Data used:   
+1. [GHS30_Eglob-TxCxW_growth_20110107-20110321_L1.csv](https://hiev.uws.edu.au/data_files/99502)   
+
+<!-- Plot the biomass  -->
+**Figure 1**: Biomass of Eucalyptus Globulus trees for all treatments. Note that, the points are jittered in all figures to see the grey standard error bars (n = 6~2).       
+
+<!-- Process biomass for 3 treatments  -->
+```{r biomass, eval=TRUE, echo=FALSE, results="asis", message=FALSE, warning = FALSE}
+source('R/biomass.R')
 ```
 
+<!-- #---------------------------------------------------------------------------------------------------------------- -->
+<!-- #---------------------------------------------------------------------------------------------------------------- -->
+
+#### Step 7: Estimate the TNC (storage) pool    
+
+##### Data used:   
+1. [GHS30_Eglob-TxCxW_carbohydrates_20110117-20110321_L1.csv](https://hiev.uws.edu.au/data_files/99499)    
+
+<!-- Plot the tnc concentration  -->
+**Figure 1**: TNC concentration of Eucalyptus Globulus trees for all treatments.        
+
+<!-- Process TNC data for each treatment  -->
+```{r tnc, eval=TRUE, echo=FALSE, results="asis", message=FALSE, warning = FALSE}
+source('R/tnc.R')
+```
 
 
 <!-- #---------------------------------------------------------------------------------------------------------------- -->
 <!-- #---------------------------------------------------------------------------------------------------------------- -->
+
 #### Step 6: Estimate the leaf TNC (storage) pool   
 1. First we considered the foliage TNC measurements over time and averaged the data across the treatments (n=3) to get the mean storage with standard errors.    
 2. We then merged the diurnal foliage TNC data by averaging all 2-hourly interval data on a sunny (20 February) and an overcast/rainy day (26 March). Similarly this data were averaged across the treatments (n=3) to get the mean with standard errors.       
